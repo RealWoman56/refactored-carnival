@@ -5,3 +5,6 @@ dist/
 .DS_Store
 coverage/
 audio-output/
+tikauto.db
+tikauto.db-shm
+tikauto.db-wal

@@ -3,6 +3,19 @@ import cors from 'cors';
 import path from 'path';
 import { generateScript } from './services/ai.service';
 import { generateVoiceover, getVoiceConfig, getAllVoiceConfigs } from './services/voice.service';
+import {
+  generateAllVisuals,
+  getAllVisualStyles,
+  GenerateVisualsRequest,
+} from './services/visual.service';
+import {
+  createGeneration,
+  saveScriptData,
+  saveAudioData,
+  getHistory,
+  getGenerationById,
+  getGenerationCount,
+} from './services/database.service';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -14,6 +27,10 @@ app.use(express.json({ limit: '10mb' }));
 // Serve generated audio files statically
 const audioOutputDir = process.env.AUDIO_OUTPUT_DIR || path.join(__dirname, '..', 'audio-output');
 app.use('/api/audio', express.static(audioOutputDir));
+
+// Serve generated visual assets statically
+const visualsOutputDir = process.env.VISUALS_OUTPUT_DIR || path.join(__dirname, '..', 'visuals-output');
+app.use('/api/visuals', express.static(visualsOutputDir));
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -37,20 +54,14 @@ app.get('/api/status', (_req, res) => {
 /**
  * POST /api/generate-script
  *
- * Generate a TikTok script using AI.
+ * Generate a TikTok script using AI and persist to database.
  *
  * Body: { niche: string, topic: string }
- * - niche: Content category (e.g., "psychology", "finance", "mystery")
- * - topic: Specific topic for the script
- *
- * Uses Gemini if GEMINI_API_KEY is set, OpenAI if OPENAI_API_KEY is set,
- * otherwise returns a mock response for development.
  */
 app.post('/api/generate-script', async (req, res) => {
   try {
     const { niche, topic } = req.body;
 
-    // Validate input
     if (!niche || !topic) {
       res.status(400).json({
         error: 'Missing required fields',
@@ -75,10 +86,20 @@ app.post('/api/generate-script', async (req, res) => {
       return;
     }
 
-    console.log(`📝 Generating script for niche="${niche}", topic="${topic}"`);
-    const script = await generateScript(niche.trim(), topic.trim());
+    const trimmedNiche = niche.trim();
+    const trimmedTopic = topic.trim();
 
-    res.json(script);
+    console.log(`📝 Generating script for niche="${trimmedNiche}", topic="${trimmedTopic}"`);
+    const script = await generateScript(trimmedNiche, trimmedTopic);
+
+    // Persist to database
+    const generationId = createGeneration(trimmedNiche, trimmedTopic);
+    saveScriptData(generationId, script);
+
+    res.json({
+      ...script,
+      generationId,
+    });
   } catch (error) {
     console.error('❌ Script generation error:', error);
     res.status(500).json({
@@ -91,20 +112,14 @@ app.post('/api/generate-script', async (req, res) => {
 /**
  * POST /api/generate-voiceover
  *
- * Generate a voiceover for the given text using the niche's configured voice.
+ * Generate a voiceover and persist to database.
  *
- * Body: { text: string, niche: string }
- * - text: The script text to convert to speech
- * - niche: Content niche (determines voice selection: psychology→Rachel, finance→Antoni, mystery→Patrick)
- *
- * Uses ElevenLabs API if ELEVENLABS_API_KEY is set,
- * otherwise returns a mock audio file for development.
+ * Body: { text: string, niche: string, generationId?: string }
  */
 app.post('/api/generate-voiceover', async (req, res) => {
   try {
-    const { text, niche } = req.body;
+    const { text, niche, generationId } = req.body;
 
-    // Validate input
     if (!text || !niche) {
       res.status(400).json({
         error: 'Missing required fields',
@@ -134,10 +149,16 @@ app.post('/api/generate-voiceover', async (req, res) => {
 
     const result = await generateVoiceover(text.trim(), niche.trim());
 
-    // Return the result with a URL to access the audio file
+    const audioUrl = `/api/audio/${path.basename(result.audioFilePath)}`;
+
+    // Persist to database if generationId is provided
+    if (generationId) {
+      saveAudioData(generationId, audioUrl, result);
+    }
+
     res.json({
       ...result,
-      audioUrl: `/api/audio/${path.basename(result.audioFilePath)}`,
+      audioUrl,
     });
   } catch (error) {
     console.error('❌ Voiceover generation error:', error);
@@ -157,12 +178,167 @@ app.get('/api/voices', (_req, res) => {
   res.json(getAllVoiceConfigs());
 });
 
+/**
+ * GET /api/visual-styles
+ *
+ * List all available niche visual styles with color palettes and font info.
+ */
+app.get('/api/visual-styles', (_req, res) => {
+  res.json(getAllVisualStyles());
+});
+
+/**
+ * POST /api/generate-visuals
+ *
+ * Generate visual assets (AI images + stock footage) for a script.
+ */
+app.post('/api/generate-visuals', async (req, res) => {
+  try {
+    const { niche, prompts, stockKeywords } = req.body;
+
+    if (!niche || !prompts) {
+      res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Both "niche" and "prompts" are required.',
+      });
+      return;
+    }
+
+    if (typeof niche !== 'string') {
+      res.status(400).json({
+        error: 'Invalid input types',
+        details: '"niche" must be a string.',
+      });
+      return;
+    }
+
+    if (!Array.isArray(prompts) || prompts.length === 0) {
+      res.status(400).json({
+        error: 'Invalid prompts',
+        details: '"prompts" must be a non-empty array of strings.',
+      });
+      return;
+    }
+
+    for (const p of prompts) {
+      if (typeof p !== 'string') {
+        res.status(400).json({
+          error: 'Invalid prompt type',
+          details: 'Each prompt must be a string.',
+        });
+        return;
+      }
+    }
+
+    if (stockKeywords !== undefined) {
+      if (!Array.isArray(stockKeywords)) {
+        res.status(400).json({
+          error: 'Invalid stockKeywords',
+          details: '"stockKeywords" must be an array of strings if provided.',
+        });
+        return;
+      }
+      for (const kw of stockKeywords) {
+        if (typeof kw !== 'string') {
+          res.status(400).json({
+            error: 'Invalid keyword type',
+            details: 'Each stock keyword must be a string.',
+          });
+          return;
+        }
+      }
+    }
+
+    console.log(`🎨 Generating visuals for niche="${niche}", ${prompts.length} prompt(s)`);
+
+    const request: GenerateVisualsRequest = {
+      niche: niche.trim(),
+      prompts,
+      stockKeywords,
+    };
+
+    const result = await generateAllVisuals(request);
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Visual generation error:', error);
+    res.status(500).json({
+      error: 'Visual generation failed',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/history
+ *
+ * Get the list of past content generations, ordered by most recent first.
+ *
+ * Query params:
+ * - limit (number, default 50): Max records to return
+ * - offset (number, default 0): Pagination offset
+ */
+app.get('/api/history', (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const offset = parseInt(req.query.offset as string) || 0;
+
+    const history = getHistory(limit, offset);
+    const total = getGenerationCount();
+
+    res.json({
+      items: history,
+      total,
+      limit,
+      offset,
+    });
+  } catch (error) {
+    console.error('❌ History fetch error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch history',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * GET /api/history/:id
+ *
+ * Get a single generation record by ID with full data.
+ */
+app.get('/api/history/:id', (req, res) => {
+  try {
+    const record = getGenerationById(req.params.id);
+    if (!record) {
+      res.status(404).json({ error: 'Generation not found' });
+      return;
+    }
+
+    res.json({
+      ...record,
+      script_data: record.script_data ? JSON.parse(record.script_data) : null,
+      audio_metadata: record.audio_metadata ? JSON.parse(record.audio_metadata) : null,
+      visual_data: record.visual_data ? JSON.parse(record.visual_data) : null,
+    });
+  } catch (error) {
+    console.error('❌ History fetch error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch generation',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 TikAuto backend running on http://0.0.0.0:${PORT}`);
   console.log(`   Health: http://0.0.0.0:${PORT}/api/health`);
   console.log(`   Generate Script: POST http://0.0.0.0:${PORT}/api/generate-script`);
   console.log(`   Generate Voiceover: POST http://0.0.0.0:${PORT}/api/generate-voiceover`);
+  console.log(`   Generate Visuals: POST http://0.0.0.0:${PORT}/api/generate-visuals`);
   console.log(`   List Voices: GET http://0.0.0.0:${PORT}/api/voices`);
+  console.log(`   Visual Styles: GET http://0.0.0.0:${PORT}/api/visual-styles`);
+  console.log(`   History: GET http://0.0.0.0:${PORT}/api/history`);
+  console.log(`   History Detail: GET http://0.0.0.0:${PORT}/api/history/:id`);
   console.log(`   Audio files: http://0.0.0.0:${PORT}/api/audio/`);
+  console.log(`   Visual assets: http://0.0.0.0:${PORT}/api/visuals/`);
 });

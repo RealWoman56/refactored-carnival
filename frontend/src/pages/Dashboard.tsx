@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import GenerationForm from '../components/GenerationForm';
 import ScriptPreview from '../components/ScriptPreview';
 import AudioPlayer from '../components/AudioPlayer';
@@ -6,12 +6,13 @@ import ContentHistory from '../components/ContentHistory';
 import {
   generateScript,
   generateVoiceover,
+  getHistory,
   GeneratedScript,
   VoiceoverResult,
 } from '../services/api';
 
 interface HistoryItem {
-  id: number;
+  id: string;
   niche: string;
   topic: string;
   timestamp: string;
@@ -19,52 +20,78 @@ interface HistoryItem {
   hasVoiceover: boolean;
 }
 
-let historyCounter = 0;
-
 export default function Dashboard() {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const [script, setScript] = useState<GeneratedScript | null>(null);
   const [voiceover, setVoiceover] = useState<VoiceoverResult | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Fetch history from backend on mount
+  useEffect(() => {
+    async function loadHistory() {
+      try {
+        const data = await getHistory(50, 0);
+        const mapped: HistoryItem[] = data.items.map((item: any) => ({
+          id: item.id,
+          niche: item.niche,
+          topic: item.topic,
+          timestamp: new Date(item.created_at + 'Z').toLocaleTimeString(),
+          hasScript: item.hasScript === 1 || item.hasScript === true,
+          hasVoiceover: item.hasAudio === 1 || item.hasAudio === true,
+        }));
+        setHistory(mapped);
+      } catch (err) {
+        console.warn('Failed to load history:', err);
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    }
+    loadHistory();
+  }, []);
+
   const handleGenerate = useCallback(async (niche: string, topic: string) => {
     setIsGenerating(true);
     setError(null);
-
-    const timestamp = new Date().toLocaleTimeString();
-    const historyId = ++historyCounter;
+    let generationId: string | null = null;
 
     try {
-      // Step 1: Generate script
+      // Step 1: Generate script (returns generationId from backend)
       const generatedScript = await generateScript(niche, topic);
       setScript(generatedScript);
       setVoiceover(null);
+      generationId = (generatedScript as any).generationId || null;
 
-      // Step 2: Generate voiceover using the full script text
+      // Step 2: Generate voiceover using the full script text, passing generationId
       let voiceoverResult: VoiceoverResult | null = null;
       try {
         voiceoverResult = await generateVoiceover(
           generatedScript.fullScript.substring(0, 5000),
-          niche
+          niche,
+          generationId || undefined
         );
         setVoiceover(voiceoverResult);
       } catch (voiceErr) {
         console.warn('Voiceover generation failed (non-critical):', voiceErr);
       }
 
-      // Add to history
-      const historyItem: HistoryItem = {
-        id: historyId,
-        niche,
-        topic,
-        timestamp,
-        hasScript: true,
-        hasVoiceover: !!voiceoverResult,
-      };
-      setHistory((prev) => [...prev, historyItem]);
-      setSelectedIndex(history.length);
+      // Refresh history from backend
+      try {
+        const data = await getHistory(50, 0);
+        const mapped: HistoryItem[] = data.items.map((item: any) => ({
+          id: item.id,
+          niche: item.niche,
+          topic: item.topic,
+          timestamp: new Date(item.created_at + 'Z').toLocaleTimeString(),
+          hasScript: item.hasScript === 1 || item.hasScript === true,
+          hasVoiceover: item.hasAudio === 1 || item.hasAudio === true,
+        }));
+        setHistory(mapped);
+      } catch {
+        // silent
+      }
 
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Generation failed';
@@ -73,12 +100,10 @@ export default function Dashboard() {
     } finally {
       setIsGenerating(false);
     }
-  }, [history.length]);
+  }, []);
 
   const handleHistorySelect = (index: number) => {
     setSelectedIndex(index);
-    // Re-select would load from history if we stored full results
-    // For now, the latest generation is always shown
   };
 
   return (
@@ -101,11 +126,18 @@ export default function Dashboard() {
       <div className="dashboard-grid">
         <div className="dashboard-column column-left">
           <GenerationForm onGenerate={handleGenerate} isGenerating={isGenerating} />
-          <ContentHistory
-            items={history}
-            onSelect={handleHistorySelect}
-            selectedIndex={selectedIndex}
-          />
+          {isLoadingHistory ? (
+            <div className="history-loading">
+              <span className="spinner" />
+              <p>Loading history...</p>
+            </div>
+          ) : (
+            <ContentHistory
+              items={history}
+              onSelect={handleHistorySelect}
+              selectedIndex={selectedIndex}
+            />
+          )}
         </div>
 
         <div className="dashboard-column column-right">

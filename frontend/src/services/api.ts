@@ -39,6 +39,23 @@ export interface VoiceoverResult {
   model: string;
 }
 
+export interface HistoryItem {
+  id: string;
+  niche: string;
+  topic: string;
+  created_at: string;
+  hasScript: number;
+  hasAudio: number;
+  hasVideo: number;
+}
+
+export interface HistoryResponse {
+  items: HistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 // --- API Client ---
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -70,15 +87,28 @@ export async function generateScript(
 
 /**
  * Generate a voiceover for the given text using the niche's voice.
+ * Optionally pass a generationId to link the audio to an existing record.
  */
 export async function generateVoiceover(
   text: string,
-  niche: string
+  niche: string,
+  generationId?: string
 ): Promise<VoiceoverResult> {
   return request<VoiceoverResult>('/generate-voiceover', {
     method: 'POST',
-    body: JSON.stringify({ text, niche }),
+    body: JSON.stringify({ text, niche, generationId }),
   });
+}
+
+/**
+ * Get content generation history from the backend.
+ */
+export async function getHistory(limit?: number, offset?: number): Promise<HistoryResponse> {
+  const params = new URLSearchParams();
+  if (limit) params.set('limit', String(limit));
+  if (offset) params.set('offset', String(offset));
+  const qs = params.toString();
+  return request<HistoryResponse>(`/history${qs ? '?' + qs : ''}`);
 }
 
 /**
