@@ -12,6 +12,7 @@ import {
   createGeneration,
   saveScriptData,
   saveAudioData,
+  saveMetadata,
   getHistory,
   getGenerationById,
   getGenerationCount,
@@ -93,7 +94,14 @@ app.post('/api/generate-script', async (req, res) => {
     const script = await generateScript(trimmedNiche, trimmedTopic);
 
     // Persist to database
-    const generationId = createGeneration(trimmedNiche, trimmedTopic);
+    const generationId = createGeneration({
+      niche: trimmedNiche,
+      topic: trimmedTopic,
+      caption: req.body.caption || null,
+      hashtags: req.body.hashtags || null,
+      description: req.body.description || null,
+      scheduled_at: req.body.scheduled_at || null,
+    });
     saveScriptData(generationId, script);
 
     res.json({
@@ -328,6 +336,51 @@ app.get('/api/history/:id', (req, res) => {
   }
 });
 
+/**
+ * PUT /api/history/:id/metadata
+ *
+ * Update the metadata fields (caption, hashtags, description, scheduled_at)
+ * for an existing generation record.
+ */
+app.put('/api/history/:id/metadata', (req, res) => {
+  try {
+    const { caption, hashtags, description, scheduled_at } = req.body;
+
+    // Validate at least one field is provided
+    if (!caption && !hashtags && !description && !scheduled_at) {
+      res.status(400).json({
+        error: 'No fields to update',
+        details: 'Provide at least one of: caption, hashtags, description, scheduled_at.',
+      });
+      return;
+    }
+
+    // Validate caption length
+    if (caption && typeof caption === 'string' && caption.length > 220) {
+      res.status(400).json({
+        error: 'Caption too long',
+        details: '"caption" max 220 characters.',
+      });
+      return;
+    }
+
+    saveMetadata(req.params.id, {
+      caption: caption || undefined,
+      hashtags: hashtags || undefined,
+      description: description || undefined,
+      scheduled_at: scheduled_at || undefined,
+    });
+
+    res.json({ success: true, id: req.params.id });
+  } catch (error) {
+    console.error('❌ Metadata update error:', error);
+    res.status(500).json({
+      error: 'Failed to update metadata',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 TikAuto backend running on http://0.0.0.0:${PORT}`);
@@ -339,6 +392,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   Visual Styles: GET http://0.0.0.0:${PORT}/api/visual-styles`);
   console.log(`   History: GET http://0.0.0.0:${PORT}/api/history`);
   console.log(`   History Detail: GET http://0.0.0.0:${PORT}/api/history/:id`);
+  console.log(`   Update Metadata: PUT http://0.0.0.0:${PORT}/api/history/:id/metadata`);
   console.log(`   Audio files: http://0.0.0.0:${PORT}/api/audio/`);
   console.log(`   Visual assets: http://0.0.0.0:${PORT}/api/visuals/`);
 });

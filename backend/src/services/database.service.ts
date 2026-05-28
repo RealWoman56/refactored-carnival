@@ -28,6 +28,7 @@ function getDb(): Database.Database {
     db.pragma('journal_mode = WAL'); // Better concurrent performance
     db.pragma('foreign_keys = ON');
     initializeSchema();
+    migrateSchema();
   }
   return db;
 }
@@ -43,6 +44,10 @@ function initializeSchema(): void {
       audio_metadata TEXT,       -- JSON: VoiceoverResult metadata
       visual_data TEXT,          -- JSON: Visual assets (future)
       video_url TEXT,            -- Path to final video (future)
+      caption TEXT,              -- TikTok caption (max 220 chars)
+      hashtags TEXT,             -- Space-separated tags
+      description TEXT,          -- Description / indexing field
+      scheduled_at TEXT,         -- Optimal posting timestamp
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `);
@@ -52,6 +57,21 @@ function initializeSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_generations_created_at
     ON generations(created_at DESC);
   `);
+}
+
+/**
+ * Migrate existing database to add new columns if they don't exist.
+ * This handles the case where the table was created before the schema update.
+ */
+function migrateSchema(): void {
+  const columns = ['caption', 'hashtags', 'description', 'scheduled_at'];
+  for (const col of columns) {
+    try {
+      db.exec(`ALTER TABLE generations ADD COLUMN ${col} TEXT`);
+    } catch {
+      // Column already exists — ignore error
+    }
+  }
 }
 
 // --- Types ---
@@ -65,6 +85,10 @@ export interface GenerationRecord {
   audio_metadata: string | null;
   visual_data: string | null;
   video_url: string | null;
+  caption: string | null;
+  hashtags: string | null;
+  description: string | null;
+  scheduled_at: string | null;
   created_at: string;
 }
 
@@ -76,6 +100,18 @@ export interface GenerationSummary {
   hasScript: boolean;
   hasAudio: boolean;
   hasVideo: boolean;
+  caption: string | null;
+  hashtags: string | null;
+  scheduled_at: string | null;
+}
+
+export interface CreateGenerationOptions {
+  niche: string;
+  topic: string;
+  caption?: string;
+  hashtags?: string;
+  description?: string;
+  scheduled_at?: string;
 }
 
 // --- CRUD Operations ---
@@ -83,21 +119,26 @@ export interface GenerationSummary {
 /**
  * Create a new generation record and return its ID.
  */
-export function createGeneration(
-  niche: string,
-  topic: string
-): string {
+export function createGeneration(options: CreateGenerationOptions): string {
   const database = getDb();
   const { v4: uuidv4 } = require('uuid');
   const id = uuidv4();
 
   const stmt = database.prepare(`
-    INSERT INTO generations (id, niche, topic)
-    VALUES (?, ?, ?)
+    INSERT INTO generations (id, niche, topic, caption, hashtags, description, scheduled_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
-  stmt.run(id, niche, topic);
+  stmt.run(
+    id,
+    options.niche,
+    options.topic,
+    options.caption || null,
+    options.hashtags || null,
+    options.description || null,
+    options.scheduled_at || null
+  );
 
-  console.log(`📦 Database: Created generation record ${id} (${niche}: ${topic})`);
+  console.log(`📦 Database: Created generation record ${id} (${options.niche}: ${options.topic})`);
   return id;
 }
 
@@ -130,6 +171,37 @@ export function saveAudioData(
   `);
   stmt.run(audioUrl, JSON.stringify(audioMetadata), id);
   console.log(`📦 Database: Saved audio data for generation ${id}`);
+}
+
+/**
+ * Save metadata (caption, hashtags, description) to an existing generation record.
+ */
+export function saveMetadata(
+  id: string,
+  metadata: {
+    caption?: string;
+    hashtags?: string;
+    description?: string;
+    scheduled_at?: string;
+  }
+): void {
+  const database = getDb();
+  const stmt = database.prepare(`
+    UPDATE generations SET
+      caption = COALESCE(?, caption),
+      hashtags = COALESCE(?, hashtags),
+      description = COALESCE(?, description),
+      scheduled_at = COALESCE(?, scheduled_at)
+    WHERE id = ?
+  `);
+  stmt.run(
+    metadata.caption || null,
+    metadata.hashtags || null,
+    metadata.description || null,
+    metadata.scheduled_at || null,
+    id
+  );
+  console.log(`📦 Database: Saved metadata for generation ${id}`);
 }
 
 /**
@@ -173,6 +245,9 @@ export function getHistory(limit: number = 50, offset: number = 0): GenerationSu
       niche,
       topic,
       created_at,
+      caption,
+      hashtags,
+      scheduled_at,
       CASE WHEN script_data IS NOT NULL THEN 1 ELSE 0 END as hasScript,
       CASE WHEN audio_url IS NOT NULL THEN 1 ELSE 0 END as hasAudio,
       CASE WHEN video_url IS NOT NULL THEN 1 ELSE 0 END as hasVideo
