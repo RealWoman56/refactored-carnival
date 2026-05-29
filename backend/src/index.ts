@@ -15,6 +15,11 @@ import {
   AssembleVideoRequest,
 } from './services/video.service';
 import {
+  selectHookAndCTA,
+  getAllHooks,
+  getAllCTAs,
+} from './services/hook-library.service';
+import {
   createGeneration,
   saveScriptData,
   saveAudioData,
@@ -362,6 +367,111 @@ app.post('/api/generate-video', async (req, res) => {
 });
 
 /**
+ * GET /api/hooks
+ *
+ * List all available viral hooks by niche.
+ */
+app.get('/api/hooks', (_req, res) => {
+  res.json(getAllHooks());
+});
+
+/**
+ * GET /api/ctas
+ *
+ * List all available call-to-action templates.
+ */
+app.get('/api/ctas', (_req, res) => {
+  res.json(getAllCTAs());
+});
+
+/**
+ * GET /api/hooks/select
+ *
+ * Select a random hook + CTA pair for a given niche.
+ * Query params: niche (string)
+ */
+app.get('/api/hooks/select', (req, res) => {
+  try {
+    const niche = (req.query.niche as string || 'psychology').toLowerCase().trim();
+    const selection = selectHookAndCTA(niche);
+    res.json(selection);
+  } catch (error) {
+    console.error('❌ Hook selection error:', error);
+    res.status(500).json({
+      error: 'Failed to select hook',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
+ * POST /api/assemble-video
+ *
+ * Full video assembly pipeline: selects hook, applies visual style,
+ * adds CTA, and assembles the final TikTok video.
+ *
+ * Body: {
+ *   niche: string,           // Content niche
+ *   audioPath: string,        // Path to voiceover audio
+ *   scriptSections: Array,    // Script sections from generation
+ *   generationId?: string,    // Optional DB record to link
+ *   hookIndex?: number,       // Optional specific hook index
+ *   ctaIndex?: number         // Optional specific CTA index
+ * }
+ */
+app.post('/api/assemble-video', async (req, res) => {
+  try {
+    const { niche, audioPath, scriptSections, generationId, hookIndex, ctaIndex } = req.body;
+
+    if (!niche || !audioPath) {
+      res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Both "niche" and "audioPath" are required.',
+      });
+      return;
+    }
+
+    const trimmedNiche = niche.trim().toLowerCase();
+    console.log(`🎬 Assembling video for niche="${trimmedNiche}"`);
+
+    // Select hook + CTA
+    const selection = selectHookAndCTA(trimmedNiche);
+
+    // Prepare script sections with hook and CTA
+    const sections = [
+      { type: 'hook', content: selection.hook.example, visualCue: selection.hook.visualStyle },
+      ...(scriptSections || []),
+      { type: 'call_to_action', content: selection.cta.text, visualCue: selection.cta.visualStyle },
+    ];
+
+    // Resolve audio path
+    const resolvedAudioPath = audioPath.startsWith('/')
+      ? audioPath
+      : path.join(audioOutputDir, path.basename(audioPath));
+
+    // Generate video
+    const result = await generateVideoFromScript(resolvedAudioPath, sections, trimmedNiche);
+
+    // Save to database if generationId provided
+    if (generationId) {
+      saveVideoUrl(generationId, result.videoUrl);
+    }
+
+    res.json({
+      ...result,
+      hook: selection.hook,
+      cta: selection.cta,
+    });
+  } catch (error) {
+    console.error('❌ Video assembly error:', error);
+    res.status(500).json({
+      error: 'Video assembly failed',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
  * GET /api/history
  *
  * Get the list of past content generations, ordered by most recent first.
@@ -477,6 +587,10 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   Visual Styles: GET http://0.0.0.0:${PORT}/api/visual-styles`);
   console.log(`   Video Styles: GET http://0.0.0.0:${PORT}/api/video-styles`);
   console.log(`   Generate Video: POST http://0.0.0.0:${PORT}/api/generate-video`);
+  console.log(`   Assemble Video: POST http://0.0.0.0:${PORT}/api/assemble-video`);
+  console.log(`   Hooks: GET http://0.0.0.0:${PORT}/api/hooks`);
+  console.log(`   CTAs: GET http://0.0.0.0:${PORT}/api/ctas`);
+  console.log(`   Select Hook: GET http://0.0.0.0:${PORT}/api/hooks/select?niche=psychology`);
   console.log(`   History: GET http://0.0.0.0:${PORT}/api/history`);
   console.log(`   History Detail: GET http://0.0.0.0:${PORT}/api/history/:id`);
   console.log(`   Update Metadata: PUT http://0.0.0.0:${PORT}/api/history/:id/metadata`);
