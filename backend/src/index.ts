@@ -9,9 +9,16 @@ import {
   GenerateVisualsRequest,
 } from './services/visual.service';
 import {
+  assembleVideo,
+  generateVideoFromScript,
+  getAllVideoStyles,
+  AssembleVideoRequest,
+} from './services/video.service';
+import {
   createGeneration,
   saveScriptData,
   saveAudioData,
+  saveVideoUrl,
   saveMetadata,
   getHistory,
   getGenerationById,
@@ -32,6 +39,10 @@ app.use('/api/audio', express.static(audioOutputDir));
 // Serve generated visual assets statically
 const visualsOutputDir = process.env.VISUALS_OUTPUT_DIR || path.join(__dirname, '..', 'visuals-output');
 app.use('/api/visuals', express.static(visualsOutputDir));
+
+// Serve generated video files statically
+const videoOutputDir = process.env.VIDEO_OUTPUT_DIR || path.join(__dirname, '..', 'video-output');
+app.use('/api/video', express.static(videoOutputDir));
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -277,6 +288,80 @@ app.post('/api/generate-visuals', async (req, res) => {
 });
 
 /**
+ * GET /api/video-styles
+ *
+ * List all available niche video styles with font and color info.
+ */
+app.get('/api/video-styles', (_req, res) => {
+  res.json(getAllVideoStyles());
+});
+
+/**
+ * POST /api/generate-video
+ *
+ * Assemble a TikTok video from audio and visual assets.
+ *
+ * Body: {
+ *   audioPath: string,       // Path to the voiceover audio
+ *   niche: string,           // Content niche for styling
+ *   generationId?: string,   // Optional DB record to link video
+ *   scriptSections?: Array<{ type, content, visualCue? }>  // Script sections for text overlays
+ * }
+ */
+app.post('/api/generate-video', async (req, res) => {
+  try {
+    const { audioPath, niche, generationId, scriptSections } = req.body;
+
+    if (!audioPath || !niche) {
+      res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Both "audioPath" and "niche" are required.',
+      });
+      return;
+    }
+
+    if (typeof audioPath !== 'string' || typeof niche !== 'string') {
+      res.status(400).json({
+        error: 'Invalid input types',
+        details: '"audioPath" and "niche" must be strings.',
+      });
+      return;
+    }
+
+    // Resolve audio path
+    const resolvedAudioPath = audioPath.startsWith('/')
+      ? audioPath
+      : path.join(audioOutputDir, path.basename(audioPath));
+
+    console.log(`🎬 Assembling video for niche="${niche}"`);
+
+    let result;
+    if (scriptSections && Array.isArray(scriptSections) && scriptSections.length > 0) {
+      result = await generateVideoFromScript(resolvedAudioPath, scriptSections, niche.trim());
+    } else {
+      result = await assembleVideo({
+        audioPath: resolvedAudioPath,
+        segments: [],
+        niche: niche.trim(),
+      });
+    }
+
+    // Save video URL to database if generationId is provided
+    if (generationId) {
+      saveVideoUrl(generationId, result.videoUrl);
+    }
+
+    res.json(result);
+  } catch (error) {
+    console.error('❌ Video assembly error:', error);
+    res.status(500).json({
+      error: 'Video assembly failed',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+/**
  * GET /api/history
  *
  * Get the list of past content generations, ordered by most recent first.
@@ -390,9 +475,12 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`   Generate Visuals: POST http://0.0.0.0:${PORT}/api/generate-visuals`);
   console.log(`   List Voices: GET http://0.0.0.0:${PORT}/api/voices`);
   console.log(`   Visual Styles: GET http://0.0.0.0:${PORT}/api/visual-styles`);
+  console.log(`   Video Styles: GET http://0.0.0.0:${PORT}/api/video-styles`);
+  console.log(`   Generate Video: POST http://0.0.0.0:${PORT}/api/generate-video`);
   console.log(`   History: GET http://0.0.0.0:${PORT}/api/history`);
   console.log(`   History Detail: GET http://0.0.0.0:${PORT}/api/history/:id`);
   console.log(`   Update Metadata: PUT http://0.0.0.0:${PORT}/api/history/:id/metadata`);
   console.log(`   Audio files: http://0.0.0.0:${PORT}/api/audio/`);
   console.log(`   Visual assets: http://0.0.0.0:${PORT}/api/visuals/`);
+  console.log(`   Video files: http://0.0.0.0:${PORT}/api/video/`);
 });
