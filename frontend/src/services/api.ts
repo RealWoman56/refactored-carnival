@@ -140,8 +140,8 @@ export const NICHE_OPTIONS = [
     description: 'Saving, investing, money mindset',
   },
   {
-    id: 'mystery',
-    label: '🔍 Unsolved Mysteries & True Crime',
-    description: 'Cold cases, disappearances, chilling stories',
+    id: 'relationships',
+    label: '💞 Relationships & Social Dynamics',
+    description: 'Love, communication, attachment theory',
   },
 ];

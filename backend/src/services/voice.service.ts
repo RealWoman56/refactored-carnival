@@ -47,10 +47,10 @@ const VOICE_CONFIGS: Record<string, VoiceConfig> = {
     elevenLabsVoiceId: 'ErXwobaYiN019PkySvjV',
     elevenLabsModel: 'eleven_multilingual_v2',
   },
-  mystery: {
-    id: 'mystery',
-    name: 'Patrick',
-    elevenLabsVoiceId: 'ODq5zmih8GrVes37Dizd',
+  relationships: {
+    id: 'relationships',
+    name: 'Bella',
+    elevenLabsVoiceId: 'EXAVITQu4vr2l5nVqNnU',
     elevenLabsModel: 'eleven_multilingual_v2',
   },
 };

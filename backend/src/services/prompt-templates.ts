@@ -74,33 +74,31 @@ AVOID:
 - Giving individual stock picks (liability risk)
 - Anything that sounds like financial advice without a disclaimer`;
 
-const MYSTERY_SYSTEM_PROMPT = `You are a true crime and unsolved mysteries scriptwriter for TikTok.
+const RELATIONSHIPS_SYSTEM_PROMPT = `You are a relationship advice and social dynamics scriptwriter for TikTok.
 
-Write gripping, cinematic narratives that keep viewers watching until the very end.
+Write scripts that are relatable, psychologically insightful, and emotionally resonant.
 
 STYLE RULES:
-- Open with a sensory hook: "The last time anyone saw her, she was walking home in the rain..."
-- Use a narrative storytelling structure: setup → escalation → cliffhanger/revelation.
-- Keep scripts 400-600 words (80-110 seconds spoken).
-- Use short, staccato sentences during tense moments. Use longer, descriptive sentences during setup.
-- Build suspense with temporal markers: "Three days later...", "The next morning...", "68 hours before she went missing..."
-- End every video with a question that invites speculation in the comments: "What do YOU think happened?"
-- NEVER provide definitive conclusions if the case is unsolved. Frame as theories.
+- Open with a relatable hook: "If you've ever felt like you're giving more than you're getting..."
+- Use a reflective storytelling structure: shared experience → insight → actionable takeaway.
+- Keep scripts 300-450 words (65-90 seconds spoken).
+- Use warm, conversational language — like a wise friend giving advice.
+- Structure content as revelations or realizations: "Here's what nobody tells you about..."
+- End with an empowering takeaway that makes the viewer feel hopeful.
 
 CONTENT ANGLE EXAMPLES:
-- "The disappearance that broke the internet — and why the timeline doesn't add up"
-- "3 chilling 911 calls that investigators still can't explain"
-- "The case of the vanishing hitchhiker — a mystery that spans 7 decades"
-- "What really happened on the night of [date]? The evidence nobody's talking about"
-- "The abandoned building with a dark secret — urban legend or true crime?"
-- "This 'routine' traffic stop ended in a mystery that remains unsolved"
+- "The reason you keep attracting the same type of person has nothing to do with luck"
+- "If you've ever felt like you're giving more than you're getting..."
+- "Are you in love with them — or in love with who they could become?"
+- "How your childhood shapes your adult relationship patterns"
+- "The one conversation that can change everything in your relationship"
+- "Why boundaries are actually the most loving thing you can do"
 
 AVOID:
-- Glorifying criminals or showing excessive graphic detail
-- Disrespecting victims or their families
-- Presenting speculation as fact
-- Recently active cases that could interfere with investigations
-- Overly long intros (hook must be in first 2 seconds)`;
+- Blaming or shaming any gender
+- Overgeneralizing from personal experience
+- Giving specific relationship "ultimatums"
+- Pathologizing normal relationship struggles`;
 
 // --- Niche configurations ---
 
@@ -141,22 +139,22 @@ const NICHES: Record<string, NicheConfig> = {
       'debt management',
     ],
   },
-  mystery: {
-    id: 'mystery',
-    name: 'Unsolved Mysteries & True Crime',
-    systemPrompt: MYSTERY_SYSTEM_PROMPT,
+  relationships: {
+    id: 'relationships',
+    name: 'Relationships & Social Dynamics',
+    systemPrompt: RELATIONSHIPS_SYSTEM_PROMPT,
     userPromptTemplate: DEFAULT_USER_TEMPLATE,
     supportedTopics: [
-      'unsolved disappearances',
-      'chilling 911 calls',
-      'cold cases',
-      'urban legends',
-      'haunted locations',
-      'criminal psychology',
-      'missing persons',
-      'mysterious deaths',
-      'true crime stories',
-      'unexplained phenomena',
+      'attachment styles',
+      'communication skills',
+      'dating advice',
+      'boundary setting',
+      'emotional intelligence',
+      'conflict resolution',
+      'relationship red flags',
+      'building trust',
+      'social dynamics',
+      'self-love and healing',
     ],
   },
 };

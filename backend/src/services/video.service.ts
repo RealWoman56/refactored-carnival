@@ -89,12 +89,12 @@ const NICHE_STYLES: Record<string, NicheVideoStyle> = {
     bgColor: '#1a1a1a',
     position: 'center',
   },
-  mystery: {
+  relationships: {
     fontFile: '',
     fontSize: 42,
-    fontColor: '#D4C5A9',
-    fontBorderColor: '#1a1a1a',
-    bgColor: '#0a0a0a',
+    fontColor: '#FFF5F5',
+    fontBorderColor: '#4A2C4A',
+    bgColor: '#2D1B2E',
     position: 'center',
   },
 };

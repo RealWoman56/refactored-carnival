@@ -25,12 +25,12 @@ export default function GenerationForm({ onGenerate, isGenerating }: GenerationF
       'How to automate your savings',
       'The latte factor explained',
     ],
-    mystery: [
-      'The disappearance nobody can explain',
-      '3 chilling 911 calls that baffled investigators',
-      'The case of the vanishing hitchhiker',
-      'What happened at the abandoned asylum',
-      'This routine traffic stop turned into a mystery',
+    relationships: [
+      'Why you keep attracting the same type',
+      '5 signs of healthy communication',
+      'How to set boundaries with loved ones',
+      'Attachment styles explained simply',
+      'The one conversation that changes everything',
     ],
   };
 
