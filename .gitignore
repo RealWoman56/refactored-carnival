@@ -5,6 +5,9 @@ dist/
 .DS_Store
 coverage/
 audio-output/
+video-output/
+visuals-output/
 tikauto.db
 tikauto.db-shm
 tikauto.db-wal
+test-*.*
