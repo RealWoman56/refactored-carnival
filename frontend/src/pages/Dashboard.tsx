@@ -141,7 +141,7 @@ export default function Dashboard() {
         </div>
 
         <div className="dashboard-column column-right">
-          <ScriptPreview script={script} />
+          {script && <ScriptPreview script={script} />}
           <AudioPlayer voiceover={voiceover} isGenerating={isGenerating} />
         </div>
       </div>

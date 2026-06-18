@@ -11,3 +11,4 @@ tikauto.db
 tikauto.db-shm
 tikauto.db-wal
 test-*.*
+*.tsbuildinfo

@@ -1,5 +1,5 @@
 interface ContentItem {
-  id: number;
+  id: string;
   niche: string;
   topic: string;
   timestamp: string;
